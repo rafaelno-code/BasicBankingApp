@@ -8,7 +8,7 @@ DB_CONFIG = {
     'host': '127.0.0.1',  # force TCP
     'port': 3306,
     'user': 'root',
-    'password': 'zbdsJFBjMhUx4o4shHMR',
+    'password': 'YourPasswordHere',
     'database': 'banking'
 }
 
