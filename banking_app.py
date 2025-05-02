@@ -3,7 +3,7 @@ import mysql.connector
 import sys
 from mysql.connector import errorcode
 
-# MySQL connection configuration (initially blank password, prompts on denial)
+# MySQL connection configuration
 DB_CONFIG = {
     'host': '127.0.0.1',  # force TCP
     'port': 3306,
@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS `transactions` (
 ) ENGINE=InnoDB;
 '''
 
-
 def get_db_connection(use_database=True):
     cfg = DB_CONFIG.copy()
     if not use_database:
@@ -46,39 +45,27 @@ def get_db_connection(use_database=True):
 
 
 def init_db():
-    # Attempt connection without database, prompt on access denied
-    while True:
-        try:
-            conn = get_db_connection(use_database=False)
-            break
-        except mysql.connector.errors.ProgrammingError as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Access denied. Please verify your DB credentials and host/port.")
-                DB_CONFIG['host'] = input('DB host (e.g. 127.0.0.1): ') or DB_CONFIG['host']
-                port_input = input('DB port [3306]: ')
-                if port_input:
-                    try:
-                        DB_CONFIG['port'] = int(port_input)
-                    except ValueError:
-                        print('Invalid port, using default 3306.')
-                DB_CONFIG['user'] = input('DB username: ')
-                DB_CONFIG['password'] = input('DB password: ')
-                continue
-            else:
-                raise
+    # Initialize database and tables
+    try:
+        conn = get_db_connection(use_database=False)
+    except mysql.connector.errors.ProgrammingError as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("Access denied. Check DB credentials.")
+            sys.exit(1)
+        else:
+            raise
+    # Create database
     cursor = conn.cursor()
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{DB_CONFIG['database']}`;")
     conn.commit()
     conn.close()
-
-    # Apply schema to database
+    # Apply schema
     conn = get_db_connection()
     cursor = conn.cursor()
     for stmt in filter(None, (s.strip() for s in SCHEMA.split(';'))):
         cursor.execute(stmt)
     conn.commit()
-
-    # Ensure default admin exists
+    # Ensure admin
     cursor.execute("SELECT COUNT(*) FROM `accounts` WHERE `is_admin`=1;")
     if cursor.fetchone()[0] == 0:
         cursor.execute(
@@ -112,12 +99,7 @@ def authenticate(account_no, pin):
         return None
     if hash_pin(pin) != row[5]:
         return None
-    return {
-        'account_id': row[0],
-        'customer_name': row[1],
-        'balance': float(row[2]),
-        'is_admin': bool(row[4])
-    }
+    return {'account_id': row[0], 'customer_name': row[1], 'balance': float(row[2]), 'is_admin': bool(row[4])}
 
 
 def create_account():
@@ -148,8 +130,8 @@ def close_account():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE `accounts` SET is_active=0 WHERE account_no=%s;", (acct,))
-    print('Account closed.' if cursor.rowcount else 'No such active account.')
     conn.commit()
+    print('Account closed.' if cursor.rowcount else 'No such active account.')
     conn.close()
 
 
@@ -160,7 +142,7 @@ def modify_account():
     if not user:
         print('Authentication failed.')
         return
-    print('\n1. Change name')
+    print('1. Change name')
     print('2. Change PIN')
     choice = input('Select option: ')
     conn = get_db_connection()
@@ -195,6 +177,39 @@ def record_transaction(account_id, tx_type, amount):
     conn.close()
 
 
+def check_balance(user):
+    print(f"Current balance: ${user['balance']:.2f}")
+
+
+def deposit(user):
+    amt = float(input('Enter deposit amount: '))
+    new_bal = user['balance'] + amt
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE `accounts` SET balance=%s WHERE account_id=%s;", (new_bal, user['account_id']))
+    conn.commit()
+    conn.close()
+    record_transaction(user['account_id'], 'deposit', amt)
+    user['balance'] = new_bal
+    print(f"Deposited ${amt:.2f} successfully. New balance: ${new_bal:.2f}")
+
+
+def withdraw(user):
+    amt = float(input('Enter withdrawal amount: '))
+    if amt > user['balance']:
+        print('Insufficient funds.')
+        return
+    new_bal = user['balance'] - amt
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE `accounts` SET balance=%s WHERE account_id=%s;", (new_bal, user['account_id']))
+    conn.commit()
+    conn.close()
+    record_transaction(user['account_id'], 'withdraw', amt)
+    user['balance'] = new_bal
+    print(f"Withdrew ${amt:.2f} successfully. New balance: ${new_bal:.2f}")
+
+
 def get_transaction_history(account_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -216,37 +231,6 @@ def view_transaction_history(user):
     print(f"{'ID':<5} {'Type':<10} {'Amount':<10} {'Date'}")
     for tx_id, tx_type, amount, tx_date in history:
         print(f"{tx_id:<5} {tx_type:<10} ${amount:<10.2f} {tx_date}")
-
-
-def check_balance(user):
-    print(f"Current balance: ${user['balance']:.2f}")
-
-
-def deposit(user):
-    amt = float(input('Enter deposit amount: '))
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    new_bal = user['balance'] + amt
-    cursor.execute("UPDATE `accounts` SET balance=%s WHERE account_id=%s;", (new_bal, user['account_id']))
-    conn.commit()
-    conn.close()
-    record_transaction(user['account_id'], 'deposit', amt)
-    print(f"Deposited ${amt:.2f} successfully.")
-
-
-def withdraw(user):
-    amt = float(input('Enter withdrawal amount: '))
-    if amt > user['balance']:
-        print('Insufficient funds.')
-        return
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    new_bal = user['balance'] - amt
-    cursor.execute("UPDATE `accounts` SET balance=%s WHERE account_id=%s;", (new_bal, user['account_id']))
-    conn.commit()
-    conn.close()
-    record_transaction(user['account_id'], 'withdraw', amt)
-    print(f"Withdrew ${amt:.2f} successfully.")
 
 
 def user_menu(user):
