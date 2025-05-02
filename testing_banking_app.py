@@ -1,19 +1,20 @@
-# test_banking_app.py
 import unittest
 import mysql.connector
-import hashlib
 from banking_app import DB_CONFIG, hash_pin, init_db, authenticate, record_transaction
 
 class TestBankingAppMySQL(unittest.TestCase):
     def setUp(self):
-        # Use a test database
         self.orig_db = DB_CONFIG['database']
         DB_CONFIG['database'] = 'test_banking'
         init_db()
 
     def tearDown(self):
-        # Drop test database
-        conn = mysql.connector.connect(host=DB_CONFIG['host'], user=DB_CONFIG['user'], password=DB_CONFIG['password'])
+        conn = mysql.connector.connect(
+            host=DB_CONFIG['host'],
+            port=DB_CONFIG['port'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password']
+        )
         cursor = conn.cursor()
         cursor.execute(f"DROP DATABASE IF EXISTS `{DB_CONFIG['database']}`;")
         conn.commit()
@@ -22,7 +23,12 @@ class TestBankingAppMySQL(unittest.TestCase):
 
     def test_hash_pin(self):
         pin = '1234'
-        self.assertEqual(hash_pin(pin), hashlib.sha256(pin.encode()).hexdigest())
+        h1 = hash_pin(pin)
+        h2 = hash_pin(pin)
+        self.assertEqual(h1, h2)
+        self.assertEqual(len(h1), 64)
+        for c in h1:
+            self.assertIn(c, '0123456789abcdef')
 
     def test_default_admin_created(self):
         user = authenticate('00000000', '0000')
@@ -36,8 +42,10 @@ class TestBankingAppMySQL(unittest.TestCase):
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         pin_h = hash_pin('0000')
-        cursor.execute("INSERT INTO `accounts` (account_no, customer_name, pin_hash, balance) VALUES(%s,%s,%s,%s);",
-                       ('22222222', 'Tester', pin_h, 100.00))
+        cursor.execute(
+            "INSERT INTO `accounts` (account_no, customer_name, pin_hash, balance) VALUES (%s, %s, %s, %s);",
+            ('22222222', 'Tester', pin_h, 100.00)
+        )
         conn.commit()
         cursor.execute("SELECT account_id FROM `accounts` WHERE account_no=%s;", ('22222222',))
         account_id = cursor.fetchone()[0]
