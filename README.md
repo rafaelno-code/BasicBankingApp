@@ -108,7 +108,3 @@ Tests cover:
   - `tx_type` (VARCHAR)
   - `amount` (DECIMAL)
   - `tx_date` (DATETIME)
-
-## License
-
-This project is licensed under the MIT License. Feel free to adapt and extend for your own learning and use.
