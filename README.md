@@ -1,4 +1,4 @@
-# Online Banking System
+# Basic Banking App
 
 ## Overview
 
